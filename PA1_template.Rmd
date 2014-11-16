@@ -1,25 +1,184 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: 'Reproducible Research: Peer Assessment 1'
+author: "Khurram Majeed"
+output:
+html_document:
+keep_md: yes
+pdf_document: default
 ---
 
+### Set options and libraries
+```{r}
+## Always make code visible
+echo = TRUE;
+## numbers >= 10^5 will be denoted in scientific notation,
+## and rounded to 2 digits
+options(scipen = 1, digits = 2)
+
+# Install ggplot2 package
+#install.packages("ggplot2")
+## Load the library to create plots
+library(ggplot2)
+
+# Install and load mice package
+#install.packages("mice")
+library(mice)
+```
 
 ## Loading and preprocessing the data
+```{r}
+## Unzip the dataset archive
+unzip("activity.zip")
 
+## Read the CSV, set the class of each variable
+data = read.csv("activity.csv", 
+                colClasses = c("integer", "Date", "factor"))
 
+## Add month column for later use in histogram
+data$month <- as.numeric(format(data$date, "%m"))
+
+## Remove the missing values from the dataset
+actDataComplete = data[complete.cases(data),] 
+
+## Set name of each row in the complete dataset to be the row number
+rownames(actDataComplete) <- 1:nrow(actDataComplete)
+
+## Checking the summary of new data
+summary(actDataComplete)
+## Checking the structure of new data
+str(actDataComplete)
+```
 
 ## What is mean total number of steps taken per day?
+1. Make a histogram of the total number of steps taken each day
+```{r}
+ggplot(actDataComplete, aes(date, steps)) + 
+  geom_bar(stat = "identity", colour = "violetred", fill = "violetred", width = 0.7) + 
+  facet_grid(. ~ month, scales = "free") + 
+  labs(title = "Histogram of total number of steps per day during October & November of 2012", 
+       x = "Date", y = "Total number of steps")
+```
 
+2. Calculate and report the mean and median total number of steps taken per day
+```{r}
+## Get the total number of steps taken each day
+stepsPerDay <- aggregate(steps ~ date, data=actDataComplete, sum)$steps;
+stepsPerDay
 
+## Get the mean of total number of steps taken per day
+mean(stepsPerDay)
+
+## Get the median of total number of steps taken per day
+median(stepsPerDay)
+```
 
 ## What is the average daily activity pattern?
+1. Create a time series plot of 5-minute interval average number of steps taken across all days  
+```{r}
+## Calculate average steps taken for every 5-minute interval
+avgStepsAll = aggregate(actDataComplete$steps,
+                        list(interval = as.numeric(as.character(actDataComplete$interval))), 
+                        FUN = "mean")
+## Assign name to the means column 
+names(avgStepsAll)[2] = "avgSteps"
 
+## Create a line plot for intervals and average steps 
+ggplot(avgStepsAll,aes(interval, avgSteps)) + 
+  geom_line(color = "violetred", size = 0.75) + 
+  labs(title = "Time Series Plot of average steps taken in every 5-minute interval", 
+       x = "5-minute intervals", 
+       y = "Average number of steps taken")
+```
 
+2. Which 5-minute interval contains maximum number of steps on average?
+```{r}
+## Gets the interval and number of steps
+avgStepsAll[avgStepsAll$avgSteps == max(avgStepsAll$avgSteps), ]
+```
 
 ## Imputing missing values
+1. Calculate the total number of observations with missing values in dataset
+```{r}
+sum(is.na(data))
+```
 
+2. Devise a strategy to impute missing data
+```{r}
+## Show summary to find out which columns have NA values
+summary(data)
+```
+We are going to use mice packe that has a function to impute missing values in dataset
 
+3. Replace missing values with data
+```{r}
+## Get a subset of dataste for imputation. 
+## The "steps" has missing values, while "month" is used because our imputation method requires a matrix  
+stepsSubset = data[c("steps", "month")]
+
+## set seed to always reproduce same results
+set.seed(150)
+
+#Impute the dataset (Be patient it may take some time..)
+imputedData = complete(mice(stepsSubset))
+
+## Replace missing values with imputed data
+data$steps = imputedData$steps
+
+## Confirm the missing values have been imputed
+summary(data)
+```
+
+4(a) Make a histogram of the total number of steps taken each day
+```{r}
+ggplot(data, aes(date, steps)) + 
+  geom_bar(stat = "identity", colour = "violetred", fill = "violetred", width = 0.7) + 
+  facet_grid(. ~ month, scales = "free") + 
+  labs(title = "Histogram of total number of steps per day during October & November of 2012", 
+       x = "Date", y = "Total number of steps")
+```
+
+4(b). Calculate and report the mean and median total number of steps taken per day
+```{r}
+## Get the total number of steps taken each day
+stepsPerDay2 <- aggregate(steps ~ date, data=data, sum)$steps;
+stepsPerDay2
+
+## Get the mean of total number of steps taken per day
+mean(stepsPerDay2)
+
+## Get the median of total number of steps taken per day
+median(stepsPerDay2)
+```
+
+The number of observations of number of steps without missing values was `r nrow(actDataComplete)`
+and after imputation we have number of onservations increased to `r nrow(data)`. Because of this increase in the number of observations, we a saw a decrease in number of mean and median.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+1. Add a factor variable to dataset, with two levels - "weekday" and "weekend". 
+```{r}
+## Extract unabbreviated weekday from the date and create a new column
+data$weekdays <- factor(format(data$date, "%A"))
+
+## Define the levels of this factor variable
+levels(data$weekdays) <- list(weekday = c("Monday", "Tuesday","Wednesday","Thursday", "Friday"),
+                                 weekend = c("Saturday", "Sunday"))
+
+## Confirm the levels of weekdays
+table(data$weekdays)
+```
+2. Make a panel plot for 5-minutes and average number of steps across all weekdays and weekends.
+```{r}
+avgStepsWeekly <- aggregate(data$steps, 
+                      list(interval = as.numeric(as.character(data$interval)), 
+                           weekdays = data$weekdays),
+                      FUN = "mean")
+
+names(avgStepsWeekly)[3] <- "avgSteps"
+
+library(lattice)
+xyplot(avgStepsWeekly$avgSteps ~ avgStepsWeekly$interval | avgStepsWeekly$weekdays, 
+       layout = c(1, 2), 
+       type = "l", 
+       xlab = "Interval", 
+       ylab = "Number of steps")
+```
